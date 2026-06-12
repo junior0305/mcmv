@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-1014096342"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'AW-1014096342');
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -618,13 +626,18 @@ function checkCapture(){
   const whats = document.getElementById('lead_whats').value.replace(/\D/g,'');
   document.getElementById('nFinal').disabled = !(nome.length>=2 && whats.length>=10);
 }
-function submitLead(){
+/* ===== RODÍZIO (fallback) =====
+   Lista usada SÓ se o Apps Script não responder a tempo.
+   O rodízio sequencial real é controlado pelo Apps Script. */
+const CORRETORES_FALLBACK = ['5511967163105','5511914948908','5511975694256'];
+
+/* URL do Web App publicado no Apps Script (cole a sua aqui) */
+const SHEETS_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+
+async function submitLead(){
   lead.nome = document.getElementById('lead_nome').value.trim();
   lead.whatsapp = document.getElementById('lead_whats').value.replace(/\D/g,'');
 
-  /* ===== INTEGRAÇÃO COMANDRA =====
-     Payload pronto para enviar ao Comandra via webhook/API.
-     Substitua a URL abaixo pelo endpoint do seu sistema. */
   const payload = {
     origem: 'lp-liberdade',
     bairro_interesse: 'Liberdade',
@@ -637,21 +650,46 @@ function submitLead(){
     renda_coproponente: lead.renda_co,
     renda_total: lead.renda_me + lead.renda_co,
     faixa_mcmv: lead.faixa,
-    abaixo_do_piso: lead.abaixo_piso,   // flag para o Comandra decidir distribuição
+    abaixo_do_piso: lead.abaixo_piso,
     timestamp: new Date().toISOString()
   };
 
-  console.log('COMANDRA PAYLOAD', payload);
+  /* ===== CONVERSÃO GOOGLE ADS =====
+     Troque 'XXXXXXXXX' pelo rótulo da conversão (ex: 'AW-1014096342/AbCdEfGhIj') */
+  if (typeof gtag === 'function') {
+    gtag('event', 'conversion', {
+      'send_to': 'AW-1014096342/XXXXXXXXX',
+      'value': 1.0,
+      'currency': 'BRL'
+    });
+  }
 
-  /* Exemplo de envio (descomente e ajuste a URL quando integrar):
-  fetch('https://SEU-ENDPOINT-COMANDRA/webhook/lead', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-  });
-  */
+  /* feedback visual durante o envio */
+  const btn = document.getElementById('nFinal');
+  btn.disabled = true;
+  btn.textContent = 'Preparando seu atendimento...';
 
-  /* Redireciona para WhatsApp com mensagem pré-preenchida */
+  /* número do corretor: vem do rodízio do Apps Script; se falhar, usa fallback local */
+  let numeroWhats = null;
+
+  if (SHEETS_URL.startsWith('https://')) {
+    try {
+      const resp = await fetch(SHEETS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (data && data.whats) numeroWhats = data.whats;
+    } catch(e){ console.warn('Apps Script indisponível, usando rodízio local', e); }
+  }
+
+  /* fallback: sorteio local entre os 3 (caso o script não responda) */
+  if (!numeroWhats) {
+    numeroWhats = CORRETORES_FALLBACK[Math.floor(Math.random()*CORRETORES_FALLBACK.length)];
+  }
+
   const msg = encodeURIComponent(`Olá! Fiz a simulação no site e quero saber mais sobre apartamentos Minha Casa Minha Vida na Liberdade. Meu nome é ${lead.nome}.`);
-  const numeroWhats = '5511000000000'; // <- troque pelo número/central do Comandra
   window.location.href = `https://wa.me/${numeroWhats}?text=${msg}`;
 }
 
